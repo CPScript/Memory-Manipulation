@@ -27,5 +27,7 @@ While not implemented, this function `InstallUEFIBootkit(`) is a placeholder for
 * Attempts to unhook API functions like `NtReadVirtualMemory` to ensure the code runs as expected even if the system has been hooked by security software.
 
 ---
+> This script demonstrates a combination of highly dangerous techniques used in advanced cyber attacks. It is designed to evade detection, exploit system vulnerabilities, inject malicious payloads, and gain kernel-level access. Using or running this code on a system could result in severe security breaches, including unauthorized access, control, and potential data theft.
+---
 
 This project is licensed under [**Creative Commons Attribution-NonCommercial-NoDerivs 4.0 International**] – see [CPScript/Legal](https://github.com/CPScript/Legal) for details.
