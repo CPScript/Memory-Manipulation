@@ -1,4 +1,4 @@
-# not finished
+# not finished | Contributions are welcomed. if you'd like to help with this project! <3
 1. **Process Hollowing**:
 * This is a technique where a process is created in a suspended state, and then its memory is replaced with malicious code (payload). This allows an attacker to run code inside the context of a legitimate process, making it harder to detect.
 
