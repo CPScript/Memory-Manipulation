@@ -1,4 +1,3 @@
-// Fully Integrated Advanced Injection Framework
 // Includes: Process Hollowing, DLL Injection, Memory-Mapped Files Injection,
 // Anti-Analysis & Anti-Debugging, Exploit & Privilege Escalation, and UEFI Bootkit
 
